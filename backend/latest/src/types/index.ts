@@ -1,12 +1,17 @@
-import { NameFilterInput, ItemFilterInput } from '../../codegenTypes';
+// import { NameFilterInput, ItemFilterInput } from '../../codegenTypes';
 
 export type IssueStockEndpointInput = {
-  customerFilter: NameFilterInput;
-  itemFilter: ItemFilterInput;
-  quantity: number;
+  customerCode: string;
+  universalCode: string;
+  numberOfUnits: number;
 };
 
 export type IssueStockEndpointResponse = {
   success: boolean;
   message: string;
+};
+
+export type Graphql = {
+  input: IssueStockEndpointInput;
+  output: IssueStockEndpointResponse;
 };
