@@ -1,8 +1,8 @@
 import namesQueryText from './graphql/customer.graphql';
 import itemsQueryText from './graphql/items.graphql';
 import batchOutboundShipmentMutationText from './graphql/batchOutboundShipment.graphql';
-import insertOutboundShipmentLineText from './graphql/insertOutboundShipmentUnallocatedLine.graphql';
 import saveOutboundShipmentItemLines from './graphql/saveOutboundShipmentItemLines.graphql';
+import checkOutboundShipmentExistsText from './graphql/checkOutboundShipmentById.graphql';
 import {
   BatchOutboundShipmentMutation,
   BatchOutboundShipmentMutationVariables,
@@ -10,12 +10,12 @@ import {
   ItemsQueryVariables,
   NamesQuery,
   NamesQueryVariables,
-  InsertOutboundShipmentUnallocatedLineMutation,
-  InsertOutboundShipmentUnallocatedLineMutationVariables,
   SaveOutboundShipmentItemLinesMutation,
+  CheckInvoiceExistsQueryVariables,
+  CheckInvoiceExistsQuery,
 } from './generated-types/graphql';
 import { MutationsSaveOutboundShipmentItemLinesArgs } from './../codegenTypes';
-import { Graphql } from './types';
+import { Graphql, ItemsEndpointResponse } from './types';
 
 export const customerQuery = (
   variables: NamesQueryVariables
@@ -30,6 +30,7 @@ export const customerQuery = (
         customerError: {
           success: false,
           message: `No customer found with code: ${variables.filter?.code?.equalTo} (codes are case sensitive)`,
+          items: [],
         },
       };
     }
@@ -39,24 +40,30 @@ export const customerQuery = (
       customerError: {
         success: false,
         message: `Error getting customer: ${error}`,
+        items: [],
       },
     };
   }
 };
 
 export const itemsQuery = (
-  variables: ItemsQueryVariables
-): { result?: ItemsQuery; itemsError?: Graphql['output'] } => {
+  storeId: string,
+  universalCode: string
+): { result?: ItemsQuery; itemsError?: ItemsEndpointResponse } => {
   try {
     const result = use_graphql({
       query: itemsQueryText,
-      variables,
+      variables: {
+        storeId,
+        filter: { universalCode: { equalTo: universalCode } },
+      } as ItemsQueryVariables,
     }) as ItemsQuery;
     if (!result || result.items.totalCount < 1) {
       return {
         itemsError: {
+          universalCode,
           success: false,
-          message: `No item found for universalCode: ${variables.filter?.code?.equalTo}`,
+          message: `No item found for universalCode: ${universalCode}`,
         },
       };
     }
@@ -64,6 +71,7 @@ export const itemsQuery = (
   } catch (error) {
     return {
       itemsError: {
+        universalCode,
         success: false,
         message: `Error getting items: ${error}`,
       },
@@ -80,16 +88,7 @@ export const batchOutboundShipmentQuery = (
   }) as BatchOutboundShipmentMutation;
 };
 
-export const insertOutboundShipmentLineQuery = (
-  variables: InsertOutboundShipmentUnallocatedLineMutationVariables
-): InsertOutboundShipmentUnallocatedLineMutation => {
-  return use_graphql({
-    query: insertOutboundShipmentLineText,
-    variables,
-  }) as InsertOutboundShipmentUnallocatedLineMutation;
-};
-
-export const batchDeleteOutboundShipmentQuery = (
+export const batchDeleteOutboundShipmentMutation = (
   storeId: string,
   shipmentId: string
 ): undefined => {
@@ -117,4 +116,35 @@ export const saveOutboundShipmentLineItemsMutation = (
     query: saveOutboundShipmentItemLines,
     variables,
   }) as SaveOutboundShipmentItemLinesMutation;
+};
+
+export const checkOutboundShipmentExistsQuery = (
+  variables: CheckInvoiceExistsQueryVariables
+): { invoiceIdError?: Graphql['output'] } => {
+  try {
+    const result = use_graphql({
+      query: checkOutboundShipmentExistsText,
+      variables,
+    }) as CheckInvoiceExistsQuery;
+
+    if (result.invoice.__typename === 'InvoiceNode' && result.invoice.id) {
+      return {
+        invoiceIdError: {
+          success: false,
+          message: `InvoiceId - ${variables.id} already exists. Shipment No.: ${result.invoice.invoiceNumber}`,
+          items: [],
+        },
+      };
+    }
+
+    return { invoiceIdError: undefined };
+  } catch (error) {
+    return {
+      invoiceIdError: {
+        success: false,
+        message: `Error checking UUID exists for invoiceId. error: ${error}`,
+        items: [],
+      },
+    };
+  }
 };

@@ -6,12 +6,12 @@
 
 TODO:
 
-1. Refactor code (better naming of things, trim generated graphql, move things to their own space )
+1. ~~Refactor code (better naming of things, trim generated graphql, move things to their own space )~~
 2. ~~Figure out codegen work flow to work better.~~
 3. ~~Better error handling and error messages. Handle edge cases.~~
 4. Testing
 5. ~~Improve Readme~~
-6. Exchange BatchOutboundShipment with UpdateOutboundShipment (for readability)
+6. ~~Exchange BatchOutboundShipment with UpdateOutboundShipment (for readability)~~ leaving as is
 
 ### Installation
 
@@ -37,6 +37,18 @@ Alternatively, download the bundle.json from the root of the [bes-plugins](https
 cargo run --bin remote_server_cli install-plugin-bundle --path ../path/to/plugin/bundle/bundle.json --url=http://localhost:8000 --username=admin --password=pass
 ```
 
+### general functionality
+
+- attempts to allocate item line batches following: `FEFO unexpired > LEFO expired > nothing` (First Expiring First Out, Last Expired First Out).
+
+First try to allocate unexpired batch lines (if expiry date is 'null', also allocated), then expired batch lines. If all stock is exhausted, then a placeholder line is added. If no stock available, one placeholder line is extended for the whole amount of units requested.
+
+Item batch lines that are 'onHold', or if it's location (if any) is 'onHold', are excluded entirely.
+
+If the amount of requested units to be supplied are all allocated, the Outbound Shipment status will be changed to "Shipped". If Outbound Shipment has a placeholder line, the status is left as "New".
+
+It is possible to "oversupply" an item in the case that "packSizes" of batches are greater than 1. i.e 'numberOfUnits' : 25, packSize of batch = 10, total units supplied would be 30 (packsize \* 3). Currently, no partial "packSize" is calculated, only entire packs.
+
 ### graphql_query params
 
 request structure
@@ -44,47 +56,65 @@ request structure
 ```jsonc
 {
   "input": {
-    "customerFilter": { "isStore": true, "isVisible": true }, // NameFilterInput type of 'names' graphql endpoint. First match is used for order.
-    "itemFilter": { "code": { "equalTo": "AR33197" } }, // ItemFilterInput type of 'items' graphql endpoint. First match is used for order.
-    "quantity": 60 // Quantity of units.  Currently if packsize > 'quantity', 1 pack will be shipped if there is enough stock.
-  }
+    "invoiceId": "UUID", // Optional.  If no value given, a random UUID will be assigned to Outbound Shipment
+    "customerCode": "string", // string for customerCode
+    "items": [
+      {
+        "universalCode": "AR33197", // string for universalCode search
+        "numberOfUnits": 60,
+      },
+    ],
+  },
 }
 ```
 
 response structure
 
-```json
+```jsonc
 {
-  "message": "Issued stock for store: Kamo Regional Warehouse, item: AR33197, quantity: 60",
-  "success": true
+  "message": "Failed to issued stock from store code: Kopu, for customer: Adamawa State Cold Store, invoiceId: 012578f4-5277-4b69-a9bc-dd7cb8b6f4d0333, items count: 2. Operation has been rolled back.",
+  "success": false,
+  "items": [
+    {
+      "message": "Inserted universalCode: 041011, Number of units requested: 500, Allocated Units: 100, Placeholder Units: 400",
+      "success": true,
+      "universalCode": "041011",
+    },
+    {
+      "message": "No item found for universalCode: 0300634",
+      "success": false,
+      "universalCode": "0300634",
+    },
+  ],
 }
 ```
 
-example graphql query
+example graphql query (where $input is a JSON structure with above mentioned request structure)
 
 ```gql
 query GraphqlPlugin($input: JSON!) {
-  pluginGraphqlQuery(pluginCode: "bes-plugins", storeId: "8D967C2618BE4D78B3A6FAD6C1C8FF25", input: $input)
+  pluginGraphqlQuery(
+    pluginCode: "bes-plugins"
+    storeId: "8D967C2618BE4D78B3A6FAD6C1C8FF25"
+    input: $input
+  )
 }
 ```
 
 ### error responses
 
-Currently api will return "success" : false, and a message in the following scenarios :
+API will return "success" : false, a message, and items: [], in the following scenarios :
 
 - No active stores are found to dispatch items from
-- Dispatching store has no stock available for item requested
-- No customer retrieved from "customerFilter" input params
-- No item retrieved from "itemFilter" input params
+- No customer retrieved from "customerCode" input param
+- An existing UUID is given for "invoiceId" input param
 
-If api should fail during the attempt of inserting and confirming the Outbound Shipment, api will return "success": true, with a "message": "error message text" attempting to describe error that has occurred. <b>If an error occurs at this stage, entire Outbound Shipment is rolled back.</b> example:
+API will return "success: false", a message, and items: [...item results]
 
-```json
-{
-  "message": "Insert order failed. Failed to issue the stock for item code: 12345, quantity: 10, customer: Customer Name, error: no insert lines returned",
-  "success": true
-}
-```
+- No item retrieved from "universalCode" input param
+- Invalid or empty parameters are passed
+
+If all item lines were successfully either allocated, or had a placeholder inserted, "success: true", message: "...", items: [...item results] will be returned.
 
 ## Frontend Plugin Functionality
 
