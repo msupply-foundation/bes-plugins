@@ -1,45 +1,16 @@
 # bes-plugins
 
-## Backend Plugin Functionality
+- [bes-plugins](#bes-plugins)
+  - [Functionality](#functionality)
+    - [graphql_query params](#graphql_query-params)
+    - [error responses](#error-responses)
+  - [Dev](#dev)
+    - [Dev troubleshooting](#dev-troubleshooting)
+  - [Installation on servers](#installation-on-servers)
 
-    * graphql_query -> issue stock via outboundShipment
+## Functionality
 
-TODO:
-
-1. ~~Refactor code (better naming of things, trim generated graphql, move things to their own space )~~
-2. ~~Figure out codegen work flow to work better.~~
-3. ~~Better error handling and error messages. Handle edge cases.~~
-4. Testing
-5. ~~Improve Readme~~
-6. ~~Exchange BatchOutboundShipment with UpdateOutboundShipment (for readability)~~ leaving as is
-
-### Installation
-
-This was initially developed using the [open-msupply](https://github.com/msupply-foundation/open-msupply-plugins.git) repo, and the plugin installed as a submodule of the open-msupply repo. To read about plugins and modules, go to [plugins and submodules](https://github.com/msupply-foundation/open-msupply/blob/develop/client/packages/plugins/README.md).
-
-Run the two commands below from the '/server' folder of OMS
-
-Generate the bundle.json (name it as you like) file
-
-```
-cargo run --bin remote_server_cli -- generate-plugin-bundle -i '../client/packages/plugins/besPlugin/' --out-file ../client/packages/plugins/besPlugin/bundle.json
-```
-
-Install bundle.json file
-
-```
-cargo run --bin remote_server_cli install-plugin-bundle --path ../client/packages/plugins/besPlugin/bundle.json --url=http://localhost:8000 --username=admin --password=pass
-```
-
-Alternatively, download the bundle.json from the root of the [bes-plugins](https://github.com/msupply-foundation/bes-plugins.git) repo and install the plugin at the '/server' folder where open-msupply server runs
-
-```
-cargo run --bin remote_server_cli install-plugin-bundle --path ../path/to/plugin/bundle/bundle.json --url=http://localhost:8000 --username=admin --password=pass
-```
-
-### general functionality
-
-- attempts to allocate item line batches following: `FEFO unexpired > LEFO expired > nothing` (First Expiring First Out, Last Expired First Out).
+This currently is a backend only plugin. It attempts to allocate item line batches following: `FEFO unexpired > LEFO expired > nothing` (First Expiring First Out, Last Expired First Out).
 
 First try to allocate unexpired batch lines (if expiry date is 'null', also allocated), then expired batch lines. If all stock is exhausted, then a placeholder line is added. If no stock available, one placeholder line is extended for the whole amount of units requested.
 
@@ -60,7 +31,7 @@ request structure
     "customerCode": "string", // string for customerCode
     "items": [
       {
-        "universalCode": "AR33197", // string for universalCode search
+        "itemCode": "AR33197", // string for item code search
         "numberOfUnits": 60,
       },
     ],
@@ -76,14 +47,14 @@ response structure
   "success": false,
   "items": [
     {
-      "message": "Inserted universalCode: 041011, Number of units requested: 500, Allocated Units: 100, Placeholder Units: 400",
+      "message": "Inserted itemCode: 041011, Number of units requested: 500, Allocated Units: 100, Placeholder Units: 400",
       "success": true,
-      "universalCode": "041011",
+      "itemCode": "041011",
     },
     {
-      "message": "No item found for universalCode: 0300634",
+      "message": "No item found for itemCode: 0300634",
       "success": false,
-      "universalCode": "0300634",
+      "itemCode": "0300634",
     },
   ],
 }
@@ -111,11 +82,41 @@ API will return "success" : false, a message, and items: [], in the following sc
 
 API will return "success: false", a message, and items: [...item results]
 
-- No item retrieved from "universalCode" input param
+- No item retrieved from "itemCode" input param
 - Invalid or empty parameters are passed
 
 If all item lines were successfully either allocated, or had a placeholder inserted, "success: true", message: "...", items: [...item results] will be returned.
 
-## Frontend Plugin Functionality
+## Dev
 
-    * None at present
+Have OMS cloned, and cd into the `/server` folder.
+
+Add this repo as a submodule in our plugins directory:
+
+```sh
+git submodule add https://github.com/msupply-foundation/bes-plugins ../client/packages/plugins/bes-plugins
+```
+
+To build and install the plugin bundle locally, run:
+
+```sh
+cargo run --bin remote_server_cli -- generate-and-install-plugin-bundle -i '../client/packages/plugins/bes-plugins' --url http://localhost:8000 --username admin --password pass
+```
+
+To build the plugin for committing to the repo:
+
+```sh
+cargo run --bin remote_server_cli -- generate-plugin-bundle -i ../client/packages/plugins/bes-plugins/ -o ../client/packages/plugins/bes-plugins/bundle.json
+```
+
+### Dev troubleshooting
+
+This was initially developed using the [open-msupply](https://github.com/msupply-foundation/open-msupply-plugins.git) repo, and the plugin installed as a submodule of the open-msupply repo. To read about plugins and modules, go to [plugins and submodules](https://github.com/msupply-foundation/open-msupply/blob/develop/client/packages/plugins/README.md).
+
+## Installation on servers
+
+Download the latest bundle.json from the root of the [bes-plugins](https://github.com/msupply-foundation/bes-plugins.git) repo and install the plugin at the '/server' folder where open-msupply server runs
+
+```sh
+remote_server_cli.exe install-plugin-bundle --path ../path/to/plugin/bundle/bundle.json --url=http://localhost:8000 --username=admin --password=pass
+```
